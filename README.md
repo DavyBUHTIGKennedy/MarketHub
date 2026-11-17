@@ -13,7 +13,10 @@ Then visit http://localhost:8000.
 
 ## Demo features
 - Switch between administrator and trader demo views.
-- Traders submit a preferred pitch for a market date; applications remain pending until administrator approval.
+- Administrators manage locations and pitches, and create dated market events from the Market calendar.
+- Seed locations include Warepoint (Food 1), Newcastle (Food 1–5 and Coffee 1–2), and Downpatrick (Food 1–5 and Coffee 1–2); the new pitches are £35 per week.
+- Traders select a market date from a visual calendar, then choose from pitch cards for that market. A pitch already requested or approved for that date is shown as unavailable.
+- Traders submit a pitch request for administrator approval; pitch availability is scoped to each market date.
 - Administrators add pitches and events, cancel events, and mark payments as paid.
 - Trader compliance overview and safety/resource links.
 - Demo changes persist in the current browser using localStorage.
