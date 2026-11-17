@@ -206,14 +206,13 @@ create trigger validate_market_booking
 before insert or update on public.bookings
 for each row execute procedure public.validate_market_booking();
 
--- A pitch cannot be requested twice while an application is pending, or allocated twice.
-create unique index if not exists bookings_one_pending_preference
-on public.bookings(event_id, preferred_pitch_id)
-where status = 'pending';
-
-create unique index if not exists bookings_one_active_allocation
-on public.bookings(event_id, allocated_pitch_id)
-where allocated_pitch_id is not null and status in ('approved','reallocated');
+-- A pitch cannot be requested or allocated twice for the same event.
+-- COALESCE makes pending preferences conflict with approved allocations too.
+drop index if exists public.bookings_one_pending_preference;
+drop index if exists public.bookings_one_active_allocation;
+create unique index if not exists bookings_one_active_pitch_per_event
+on public.bookings(event_id, (coalesce(allocated_pitch_id, preferred_pitch_id)))
+where status in ('pending','approved','reallocated');
 
 -- Enable row-level security on every exposed table.
 alter table public.profiles enable row level security;
