@@ -14,7 +14,7 @@ Then visit http://localhost:8000.
 ## Demo features
 - Switch between administrator and trader demo views.
 - Administrators manage locations and pitches, and create dated market events from the Market calendar.
-- Seed locations include Warepoint (Food 1), Newcastle (Food 1–5 and Coffee 1–2), and Downpatrick (Food 1–5 and Coffee 1–2); the new pitches are £35 per week.
+- Seed locations include Warepoint (Food 1), Newcastle (Food 1–5 and Coffee 1–2), and Downpatrick (Food 1–5 and Coffee 1–2); the Newcastle and Downpatrick pitches are £35 per week.
 - Traders select a market date from a visual calendar, then choose from pitch cards for that market. A pitch already requested or approved for that date is shown as unavailable.
 - Traders submit a pitch request for administrator approval; pitch availability is scoped to each market date.
 - Administrators add pitches and events, cancel events, and mark payments as paid.
@@ -25,16 +25,13 @@ Then visit http://localhost:8000.
 ## Important limitations
 This repository currently contains a front-end prototype, not a production service. Demo data is local to one browser and is not shared between users. There is no real account authentication, server-side authorization, document upload, automated email/SMS delivery, payment processing, or live Met Office/council data feed. Contact details and demo records remain in that browser only. The contact book opens the manager’s installed messaging apps with a prepared message; the manager must review and send each message. The trader view uses a sample trader identity. Do not use it to collect real personal, financial or compliance documents.
 
-Before launch, implement a secure backend (the SQL in `database/schema.sql` is a starting point), real user accounts and role-based access, server-side booking validation, audit logging, backups, privacy notices and tested integrations. Payment processing should use a compliant hosted checkout provider; never store card details in MarketHub.
+## Database and multi-organisation foundation
+- `database/schema.sql` creates the initial Supabase/PostgreSQL tables, signup profile trigger, booking validation and starter pitch data.
+- `database/migrations/001_multi_organisation.sql` upgrades that schema to a multi-organisation model. Every market organisation has separate membership and role assignments; locations, pitches, events, bookings, payments, compliance records, notifications and audit records are organisation-scoped with row-level security.
+- `SUPABASE_SETUP.md` explains how to create the Supabase project, apply both SQL files and bootstrap the first organisation owner.
+- **The hosted database has not yet been created or connected, and the website is not yet using it.** The existing GitHub Pages app remains a localStorage prototype. Do not enter real trader details until the live database, authentication and access tests are complete.
 
+Before launch, complete and test the frontend integration, organisation onboarding, role-based access, server-side booking validation, audit logging, backups, privacy notices and required integrations. Payment processing should use a compliant hosted checkout provider; never store card details in MarketHub.
 
-### Trader management and group messaging
-
-The administrator can add traders, edit their names and contact details, and remove them from the active list while retaining existing booking/payment history. The Contact traders page supports selecting individual traders or all traders, editing a shared message, choosing SMS/WhatsApp/email, and preparing a separate outgoing message for each selected recipient. Each message is opened in the manager's installed app and must be reviewed and sent manually. This is not automatic bulk delivery; background sending requires a separately configured messaging service/API. Demo data remains browser-local until a secure shared database is connected.
-
-
-## Shared storage preparation
-
-- `database/schema.sql` now provides the Supabase/PostgreSQL schema, automatic trader-profile creation, administrator role protection, row-level security policies, booking conflict prevention, and the Newcastle/Downpatrick pitch seed data.
-- Follow `SUPABASE_SETUP.md` to create the hosted project, apply the schema, create the manager account and promote that account to administrator.
-- **The live website is not connected to Supabase yet.** The hosted project and credentials must be connected and the frontend migrated from localStorage before real data is entered.
+## Trader management and messaging
+The administrator can add traders, edit their names and contact details, and remove them from the active list while retaining existing booking/payment history. The Contact traders page supports selecting individual traders or all traders, editing a shared message, choosing SMS/WhatsApp/email, and preparing a separate outgoing message for each selected recipient. Each message is opened in the manager's installed app and must be reviewed and sent manually. This is not automatic bulk delivery; background sending requires a separately configured messaging service/API.
