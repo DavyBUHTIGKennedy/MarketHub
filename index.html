@@ -17,7 +17,16 @@
 <script>
 const seed={pitches:[{id:1,name:"Food 1",area:"Warepoint",price:35},{id:2,name:"Food 1",area:"Newcastle",price:35},{id:3,name:"Food 2",area:"Newcastle",price:35},{id:4,name:"Food 3",area:"Newcastle",price:35},{id:5,name:"Food 4",area:"Newcastle",price:35},{id:6,name:"Food 5",area:"Newcastle",price:35},{id:7,name:"Coffee 1",area:"Newcastle",price:35},{id:8,name:"Coffee 2",area:"Newcastle",price:35},{id:9,name:"Food 1",area:"Downpatrick",price:35},{id:10,name:"Food 2",area:"Downpatrick",price:35},{id:11,name:"Food 3",area:"Downpatrick",price:35},{id:12,name:"Food 4",area:"Downpatrick",price:35},{id:13,name:"Food 5",area:"Downpatrick",price:35},{id:14,name:"Coffee 1",area:"Downpatrick",price:35},{id:15,name:"Coffee 2",area:"Downpatrick",price:35}],traders:["Harbour Bakes","Mourne Crafts","Green Leaf Produce"],bookings:[],events:[{id:101,name:"Newcastle Market",date:nextDate(7),location:"Newcastle",status:"Scheduled"},{id:102,name:"Downpatrick Market",date:nextDate(10),location:"Downpatrick",status:"Scheduled"}],payments:[{id:1,trader:"Harbour Bakes",amount:35,status:"Paid"},{id:2,trader:"Mourne Crafts",amount:35,status:"Due"},{id:3,trader:"Green Leaf Produce",amount:35,status:"Due"}],compliance:[{trader:"Harbour Bakes",item:"Public liability insurance",status:"Received"},{trader:"Mourne Crafts",item:"Risk assessment",status:"Outstanding"},{trader:"Green Leaf Produce",item:"Food business registration",status:"Received"}]};
 function nextDate(n){let d=new Date();d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)}
-let data;try{data=JSON.parse(localStorage.getItem("markethub-demo"))||seed}catch{data=seed}
+let data;
+try {
+  const stored=JSON.parse(localStorage.getItem("markethub-demo")||"null");
+  data=stored&&typeof stored==="object"&&!Array.isArray(stored)?stored:seed;
+} catch { data=seed; }
+// Repair incomplete or older browser saves before any page code uses them.
+for (const key of Object.keys(seed)) {
+  if (!Array.isArray(data[key])) data[key]=seed[key].slice();
+}
+
 // Upgrade existing browser-only demo data without overwriting trader records.
 if(!data.pitches.some(p=>p.area==="Newcastle")){
   let nextId=Math.max(0,...data.pitches.map(p=>Number(p.id)||0))+1;
@@ -28,7 +37,16 @@ if(!data.events.some(e=>e.location==="Downpatrick"))data.events.push({id:Date.no
 if(!Array.isArray(data.contacts))data.contacts=data.traders.map(name=>({name,phone:"",email:"",preferred:"SMS"}));
 for(const name of data.traders)if(!data.contacts.some(c=>c.name===name))data.contacts.push({name,phone:"",email:"",preferred:"SMS"});
 let role="admin",tab="dashboard",selectedMarketId=null,selectedPitchId=null,calendarMonth=new Date();const tabs=[["dashboard","Overview"],["bookings","Bookings"],["events","Market calendar"],["pitches","Locations & pitches"],["traders","Traders"],["contacts","Contact traders"],["payments","Payments"],["compliance","Compliance"],["safety","Safety & updates"]];
-const $=s=>document.querySelector(s);function save(){localStorage.setItem("markethub-demo",JSON.stringify(data));render()}
+const $=s=>document.querySelector(s);
+function save(){
+  try {
+    localStorage.setItem("markethub-demo",JSON.stringify(data));
+  } catch (err) {
+    console.error("MarketHub could not save to this browser",err);
+    alert("MarketHub could not save changes in this browser. Check browser storage/privacy settings before continuing.");
+  }
+  render();
+}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function pitch(id){return data.pitches.find(p=>p.id===Number(id))}
 function badge(s){return '<span class="pill '+(s==="Pending"||s==="Due"||s==="Outstanding"?"pending":s==="Cancelled"?"cancelled":"")+'">'+esc(s)+'</span>'}
