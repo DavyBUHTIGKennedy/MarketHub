@@ -31,3 +31,10 @@ Before launch, implement a secure backend (the SQL in `database/schema.sql` is a
 ### Trader management and group messaging
 
 The administrator can add traders, edit their names and contact details, and remove them from the active list while retaining existing booking/payment history. The Contact traders page supports selecting individual traders or all traders, editing a shared message, choosing SMS/WhatsApp/email, and preparing a separate outgoing message for each selected recipient. Each message is opened in the manager's installed app and must be reviewed and sent manually. This is not automatic bulk delivery; background sending requires a separately configured messaging service/API. Demo data remains browser-local until a secure shared database is connected.
+
+
+## Shared storage preparation
+
+- `database/schema.sql` now provides the Supabase/PostgreSQL schema, automatic trader-profile creation, administrator role protection, row-level security policies, booking conflict prevention, and the Newcastle/Downpatrick pitch seed data.
+- Follow `SUPABASE_SETUP.md` to create the hosted project, apply the schema, create the manager account and promote that account to administrator.
+- **The live website is not connected to Supabase yet.** The hosted project and credentials must be connected and the frontend migrated from localStorage before real data is entered.
