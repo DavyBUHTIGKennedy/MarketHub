@@ -19,9 +19,10 @@ Then visit http://localhost:8000.
 - Traders submit a pitch request for administrator approval; pitch availability is scoped to each market date.
 - Administrators add pitches and events, cancel events, and mark payments as paid.
 - Trader compliance overview and safety/resource links.
+- Manager contact book with preferred contact method and one-tap SMS, WhatsApp, phone and email links. Messages are prepared for review and sent using the manager’s existing phone/email apps; no SMS gateway subscription is required.
 - Demo changes persist in the current browser using localStorage.
 
 ## Important limitations
-This repository currently contains a front-end prototype, not a production service. Demo data is local to one browser and is not shared between users. There is no real account authentication, server-side authorization, document upload, email/SMS delivery, payment processing, or live Met Office/council data feed. The trader view uses a sample trader identity. Do not use it to collect real personal, financial or compliance documents.
+This repository currently contains a front-end prototype, not a production service. Demo data is local to one browser and is not shared between users. There is no real account authentication, server-side authorization, document upload, automated email/SMS delivery, payment processing, or live Met Office/council data feed. Contact details and demo records remain in that browser only. The contact book opens the manager’s installed messaging apps with a prepared message; the manager must review and send each message. The trader view uses a sample trader identity. Do not use it to collect real personal, financial or compliance documents.
 
 Before launch, implement a secure backend (the SQL in `database/schema.sql` is a starting point), real user accounts and role-based access, server-side booking validation, audit logging, backups, privacy notices and tested integrations. Payment processing should use a compliant hosted checkout provider; never store card details in MarketHub.
