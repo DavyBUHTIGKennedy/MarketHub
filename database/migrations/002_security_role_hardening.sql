@@ -63,7 +63,7 @@ begin
     where m.organization_id = new.organization_id
       and m.user_id = (select auth.uid());
 
-    if actor_role not in ('owner', 'admin') then
+    if actor_role is null or actor_role not in ('owner', 'admin') then
       raise exception 'Only an organisation owner or administrator can add members';
     end if;
     if actor_role = 'admin' and new.role <> 'trader' then
