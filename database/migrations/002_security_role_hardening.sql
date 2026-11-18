@@ -84,6 +84,9 @@ begin
 
   if actor_role = 'owner' then
     if old.role = 'owner' and new.role is distinct from 'owner' then
+      -- Serialize owner changes for this organisation to prevent concurrent
+      -- requests from removing/demoting the final two owners at the same time.
+      perform 1 from public.organizations where id = old.organization_id for update;
       select count(*) into remaining_owners
       from public.organization_memberships m
       where m.organization_id = old.organization_id
@@ -133,6 +136,8 @@ begin
 
   if actor_role = 'owner' then
     if old.role = 'owner' then
+      -- Serialize owner removals/demotions for this organisation.
+      perform 1 from public.organizations where id = old.organization_id for update;
       select count(*) into remaining_owners
       from public.organization_memberships m
       where m.organization_id = old.organization_id
