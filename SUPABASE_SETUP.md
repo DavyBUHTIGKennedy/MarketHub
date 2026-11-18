@@ -12,9 +12,10 @@ MarketHub is being moved from browser-only demo storage to a shared PostgreSQL d
 1. Open the project dashboard and choose **SQL Editor**.
 2. Open `database/schema.sql` in this repository, paste the complete file into a new SQL query and run it.
 3. Open `database/migrations/001_multi_organisation.sql`, paste the complete file into a second SQL query and run it.
-4. Confirm that the tables include `organizations` and `organization_memberships`, and that the existing Newcastle and Downpatrick locations belong to the `markethub-demo` organisation.
+4. Open `database/migrations/002_security_role_hardening.sql`, paste the complete file into a third SQL query and run it.
+5. Confirm that the tables include `organizations` and `organization_memberships`, and that the existing Newcastle and Downpatrick locations belong to the `markethub-demo` organisation.
 
-The migration moves the existing single-market starter data into one organisation called **MarketHub Demo Market**. It adds organisation IDs to market records and replaces global access policies with organisation-scoped row-level security. A user's role is held in their organisation membership (owner, admin or trader), not in a platform-wide administrator flag.
+The migration moves the existing single-market starter data into one organisation called **MarketHub Demo Market**. It adds organisation IDs to market records and replaces global access policies with organisation-scoped row-level security. A user's role is held in their organisation membership (owner, admin or trader), not in a platform-wide administrator flag. Migration `002_security_role_hardening.sql` retires the old global profile-role authorization helper, prevents authenticated browser clients from changing the legacy `profiles.role` field, restricts profile updates to basic contact fields, and limits administrators to managing trader memberships. Only owners can grant or revoke administrator/owner roles, and an organisation cannot lose its last owner.
 
 ## 3. Create the manager account and assign the first organisation owner
 1. In Supabase **Authentication → Users**, create the manager account using an email address the manager controls.
