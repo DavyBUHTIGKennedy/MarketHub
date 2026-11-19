@@ -288,7 +288,7 @@ begin
     raise exception 'Sorry, all pitches for this market date have been taken.';
   end if;
 
-  hold_until := now() + interval '35 minutes';
+  hold_until := now() + interval '36 minutes';
 
   if existing_res.id is null then
     insert into public.market_reservations (
