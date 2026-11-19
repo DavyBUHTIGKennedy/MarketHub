@@ -21,7 +21,7 @@
       const orgOptions = memberships.length > 1
         ? '<label class="mh-muted" for="mhOrg">Organisation</label><select id="mhOrg">'+memberships.map((m,i)=>'<option value="'+i+'" '+(m===membership?'selected':'')+'>'+esc(m.organizations?.name||"Market organisation")+' — '+esc(m.role)+'</option>').join("")+'</select>'
         : '<small>'+esc(membership.organizations?.name||"Market organisation")+' · '+esc(membership.role)+'</small>';
-      root.innerHTML = '<div class="mh-top"><div><div style="font-size:21px;font-weight:800">MarketHub</div><small>'+esc(session.user.email)+' · '+esc(membership.role)+'</small></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+orgOptions+'<button class="mh-button secondary" id="mhSignOut">Sign out</button></div></div><nav class="mh-nav"><button data-tab="overview">Overview</button><button data-tab="calendar">Market calendar</button><button data-tab="pitches">Locations & pitches</button>'+(isAdmin()?'<button data-tab="traders">Traders</button>':'')+'</nav><div id="mhMessage" class="mh-muted" role="status"></div><div id="mhContent"></div>';
+      root.innerHTML = '<div class="mh-top"><div><div style="font-size:21px;font-weight:800">MarketHub</div><small>'+esc(session.user.email)+' · '+esc(membership.role)+'</small></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+orgOptions+'<button class="mh-button secondary" id="mhSignOut">Sign out</button></div></div><nav class="mh-nav"><button data-tab="overview">Overview</button><button data-tab="calendar">Market calendar</button><button data-tab="pitches">Locations & pitches</button>'+(isAdmin()?'<button data-tab="traders">Traders</button><button data-tab="invitations">Invitations</button>':'')+'</nav><div id="mhMessage" class="mh-muted" role="status"></div><div id="mhContent"></div>';
       root.querySelector("#mhSignOut").onclick=async()=>{const {error}=await client.auth.signOut();if(error)message("Sign out failed: "+error.message,true);};
       root.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render();});
       const orgSelect=root.querySelector("#mhOrg");
@@ -71,6 +71,10 @@
       }
       out+='</div>';return out;
     };
+    const invitationsPage = () => {
+      const upcoming=events.filter(e=>e.status==="scheduled"&&e.event_date>=todayISO());
+      return '<div class="mh-card"><h2>Market invitations</h2><p class="mh-muted">Choose a market date and create secure, single-use invitation links for traders eligible at that location. Priority traders are handled first; generate the remaining traders’ links when you are ready.</p><form id="mhInvitationForm" class="mh-grid"><div class="mh-field"><label>Market date</label><select name="event_id" required>'+upcoming.map(e=>'<option value="'+e.id+'">'+esc(e.name)+' · '+esc(locationName(e.location_id))+' · '+dateText(e.event_date)+' · £'+Number(e.pitch_price).toFixed(2)+'</option>').join("")+'</select></div><div class="mh-field"><label>Invitation round</label><select name="round"><option value="priority">Priority traders first</option><option value="remaining">Remaining eligible traders</option></select></div><div><button class="mh-button">Generate invitation links</button></div></form><p class="mh-muted">Links are not emailed yet. Copy each named trader’s link and send it directly. Opening a link only displays the invitation; it does not book a pitch or take payment.</p><div id="mhInvitationResults"></div></div>';
+    };
     const traderPage = () => {
       let out='<div class="mh-card"><h2>Traders</h2><p class="mh-muted">Manage trader contact details and the locations they can be invited to. New traders start eligible at every location. Invitation emails are not connected yet.</p>';
       out+='<form id="mhTraderForm" class="mh-grid"><div class="mh-field"><label>Trader name</label><input name="full_name" required placeholder="Full name"></div><div class="mh-field"><label>Email address</label><input name="email" type="email" required placeholder="trader@example.com"></div><div class="mh-field"><label>Business name (optional)</label><input name="business_name"></div><div class="mh-field"><label>Phone (optional)</label><input name="phone" type="tel"></div><div><button class="mh-button">Add trader</button></div></form><hr style="border:0;border-top:1px solid #dce5df;margin:20px 0">';
@@ -79,14 +83,14 @@
           const pref=traderPreferences.find(p=>p.trader_id===t.id&&p.location_id===loc.id);
           return '<label style="display:inline-flex;gap:9px;align-items:center;margin:6px 16px 6px 0;padding:9px 13px;border:1px solid #b9d3c8;border-radius:9px;background:#f4f8f5;cursor:pointer;font-weight:600"><input type="checkbox" data-trader-eligibility="'+t.id+'" data-location-id="'+loc.id+'" '+(pref?.is_eligible!==false?'checked':'')+' '+(!t.active?'disabled':'')+' style="appearance:auto!important;-webkit-appearance:checkbox!important;display:inline-block!important;visibility:visible!important;opacity:1!important;position:static!important;width:20px!important;height:20px!important;min-width:20px!important;margin:0!important;padding:0!important;accent-color:#176456;cursor:pointer"> '+esc(loc.name)+'</label>';
         }).join("");
-        return '<section style="margin:14px 0;padding:14px;border:1px solid #dce5df;border-radius:12px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div><h3 style="margin:0">'+esc(t.full_name||t.email)+'</h3><div class="mh-muted">'+esc(t.email)+'</div>'+(t.business_name?'<div class="mh-muted">'+esc(t.business_name)+'</div>':'')+(t.phone?'<div class="mh-muted">'+esc(t.phone)+'</div>':'')+'</div><div class="mh-muted">'+(t.auth_user_id?'Account linked':'No website login linked')+'</div></div><div style="margin-top:12px"><b>Eligible locations</b><div>'+prefs+'</div></div></section>';
+        return '<section style="margin:14px 0;padding:14px;border:1px solid #dce5df;border-radius:12px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div><h3 style="margin:0">'+esc(t.full_name||t.email)+'</h3><div class="mh-muted">'+esc(t.email)+'</div>'+(t.business_name?'<div class="mh-muted">'+esc(t.business_name)+'</div>':'')+(t.phone?'<div class="mh-muted">'+esc(t.phone)+'</div>':'')+'</div><div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap"><label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700"><input type="checkbox" data-trader-priority="'+t.id+'" '+(t.is_priority?'checked':'')+' style="appearance:auto!important;-webkit-appearance:checkbox!important;width:18px!important;height:18px!important;min-width:18px!important;accent-color:#176456"> Priority</label><span class="mh-muted">'+(t.auth_user_id?'Account linked':'No website login linked')+'</span></div></div><div style="margin-top:12px"><b>Eligible locations</b><div>'+prefs+'</div></div></section>';
       }).join(""):'<p class="mh-muted">No traders have been added yet.</p>';
       out+='</div>';return out;
     };
     const render = () => {
       root.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===tab));
       const content=root.querySelector("#mhContent");
-      content.innerHTML=tab==="calendar"?calendar():tab==="pitches"?pitchPage():tab==="traders"&&isAdmin()?traderPage():overview();
+      content.innerHTML=tab==="calendar"?calendar():tab==="pitches"?pitchPage():tab==="traders"&&isAdmin()?traderPage():tab==="invitations"&&isAdmin()?invitationsPage():overview();
       root.querySelector("#mhPrev")?.addEventListener("click",()=>{month.setMonth(month.getMonth()-1);render();});
       root.querySelector("#mhNext")?.addEventListener("click",()=>{month.setMonth(month.getMonth()+1);render();});
       content.querySelectorAll("[data-date]").forEach(b=>b.onclick=()=>{selectedDate=b.dataset.date;render();});
@@ -123,6 +127,35 @@
         const {error}=await client.from("market_traders").insert({organization_id:orgId(),email,full_name:String(fd.get("full_name")||"").trim(),business_name:String(fd.get("business_name")||"").trim()||null,phone:String(fd.get("phone")||"").trim()||null,active:true});
         if(error){message(error.code==="23505"?"That email address is already in this organisation.":"Could not add trader: "+error.message,true);return;}
         await loadData();tab="traders";render();
+      });
+      content.querySelectorAll("[data-trader-priority]").forEach(box=>box.addEventListener("change",async()=>{
+        const {error}=await client.from("market_traders").update({is_priority:box.checked}).eq("id",box.dataset.traderPriority).eq("organization_id",orgId());
+        if(error){message("Could not save priority setting: "+error.message,true);box.checked=!box.checked;return;}
+        const trader=traders.find(t=>t.id===box.dataset.traderPriority);if(trader)trader.is_priority=box.checked;
+        message("Trader priority saved.");
+      }));
+      content.querySelector("#mhInvitationForm")?.addEventListener("submit",async ev=>{
+        ev.preventDefault();
+        const fd=new FormData(ev.target),button=ev.target.querySelector("button");
+        if(button){button.disabled=true;button.textContent="Preparing links…";}
+        message("Creating secure invitation links…");
+        const {data,error}=await client.functions.invoke("market-invitations",{body:{
+          action:"issue",event_id:String(fd.get("event_id")),round:String(fd.get("round")),
+          base_url:new URL(".",window.location.href).toString()
+        }});
+        if(button){button.disabled=false;button.textContent="Generate invitation links";}
+        if(error||data?.error){message("Could not create invitations: "+(data?.error||error.message),true);return;}
+        const results=content.querySelector("#mhInvitationResults");
+        results.innerHTML='<h3 style="margin-top:18px">'+esc(data.event_name)+' · '+esc(data.location_name)+'</h3><p class="mh-muted">'+esc(data.message)+'</p>';
+        if(data.invitations?.length){
+          results.innerHTML+='<div>'+data.invitations.map((item,i)=>'<section style="padding:12px 0;border-top:1px solid #dce5df"><b>'+esc(item.name)+'</b><div class="mh-muted">'+esc(item.email)+'</div><input readonly value="'+esc(item.url)+'" aria-label="Invitation link for '+esc(item.name)+'" style="margin:7px 0"><button type="button" class="mh-button secondary" data-copy-invite="'+i+'">Copy link</button></section>').join("")+'</div>';
+          results.querySelectorAll("[data-copy-invite]").forEach(copy=>copy.onclick=async()=>{
+            const item=data.invitations[Number(copy.dataset.copyInvite)];
+            try{await navigator.clipboard.writeText(item.url);copy.textContent="Copied";message("Invitation link copied.");}
+            catch{message("Clipboard access was blocked. Select and copy the link from its text field.",true);}
+          });
+        }
+        message(data.message);
       });
       content.querySelectorAll("[data-trader-eligibility]").forEach(box=>box.addEventListener("change",async()=>{
         const traderId=box.dataset.traderEligibility,locationId=box.dataset.locationId;
