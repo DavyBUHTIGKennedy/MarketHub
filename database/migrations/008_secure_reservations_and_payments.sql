@@ -195,10 +195,11 @@ begin
     raise exception 'This invitation link is invalid.';
   end if;
 
+  -- Read invitation metadata first without locking so we can acquire locks
+  -- in the global order: event -> reservation -> invitation.
   select * into inv
   from public.market_invitations
-  where token_hash = p_token_hash
-  for update;
+  where token_hash = p_token_hash;
 
   if inv.id is null or inv.status not in ('pending','viewed') or inv.expires_at <= now() then
     raise exception 'This invitation has expired or is no longer available.';
@@ -239,6 +240,16 @@ begin
   from public.market_reservations
   where event_id = inv.event_id and trader_id = inv.trader_id
   for update;
+
+  -- Re-lock and revalidate the invitation only after event/reservation locks.
+  select * into inv
+  from public.market_invitations
+  where id = inv.id and token_hash = p_token_hash
+  for update;
+
+  if inv.id is null or inv.status not in ('pending','viewed') or inv.expires_at <= now() then
+    raise exception 'This invitation has expired or is no longer available.';
+  end if;
 
   if existing_res.id is not null and existing_res.status in ('confirmed','refund_required') then
     raise exception 'This trader already has a confirmed booking or a payment requiring organiser review.';
@@ -359,15 +370,14 @@ begin
     return jsonb_build_object('result','duplicate');
   end if;
 
+  -- Read mapping metadata without locks, then acquire locks in the global order:
+  -- event -> reservation -> payment transaction -> invitation.
   select * into tx
   from public.market_payment_transactions
-  where stripe_checkout_session_id = p_checkout_session_id
-  for update;
+  where stripe_checkout_session_id = p_checkout_session_id;
 
   if tx.id is null then
-    -- Stripe can deliver a webhook immediately after Checkout creation, before
-    -- the Edge Function has stored the session mapping. Do not consume the event;
-    -- Stripe's retry can then process it once the mapping exists.
+    -- Mapping may not yet have been stored when Stripe first delivers the event.
     delete from public.market_stripe_webhook_events
     where stripe_event_id = p_stripe_event_id;
     return jsonb_build_object('result','unknown_session');
@@ -375,11 +385,33 @@ begin
 
   select * into reservation
   from public.market_reservations
+  where id = tx.reservation_id;
+
+  if reservation.id is null then
+    delete from public.market_stripe_webhook_events
+    where stripe_event_id = p_stripe_event_id;
+    return jsonb_build_object('result','unknown_reservation');
+  end if;
+
+  select * into ev
+  from public.market_events
+  where id = reservation.event_id and organization_id = reservation.organization_id
+  for update;
+
+  select * into reservation
+  from public.market_reservations
   where id = tx.reservation_id
   for update;
 
-  if reservation.id is null then
-    return jsonb_build_object('result','unknown_reservation');
+  select * into tx
+  from public.market_payment_transactions
+  where stripe_checkout_session_id = p_checkout_session_id
+  for update;
+
+  if tx.id is null or reservation.id is null then
+    delete from public.market_stripe_webhook_events
+    where stripe_event_id = p_stripe_event_id;
+    return jsonb_build_object('result','unknown_mapping');
   end if;
 
   -- A trader may retry after an expired hold. Never let an old Checkout session
@@ -389,11 +421,6 @@ begin
   end if;
 
   stale_attempt := tx.hold_generation is distinct from reservation.hold_generation;
-
-  select * into ev
-  from public.market_events
-  where id = reservation.event_id and organization_id = reservation.organization_id
-  for update;
 
   if p_event_type = 'checkout.session.completed' and p_payment_status = 'paid' then
     if stale_attempt or tx.status <> 'checkout_open' or ev.id is null or ev.status <> 'scheduled' then
@@ -472,7 +499,7 @@ begin
     set status = 'expired', updated_at = now()
     where id = tx.id and status = 'checkout_open';
     return jsonb_build_object('result','expired');
-  elsif p_event_type in ('checkout.session.async_payment_failed','payment_intent.payment_failed') then
+  elsif p_event_type = 'checkout.session.async_payment_failed' then
     if not stale_attempt then
       update public.market_reservations
       set status = 'cancelled', updated_at = now()
