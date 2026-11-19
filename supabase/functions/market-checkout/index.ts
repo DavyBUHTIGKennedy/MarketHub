@@ -181,6 +181,7 @@ Deno.serve(async (req) => {
 
   const params = new URLSearchParams();
   params.set("mode", "payment");
+  params.set("payment_method_types[0]", "card");
   params.set("success_url", successUrl);
   params.set("cancel_url", cancelUrl);
   params.set("client_reference_id", reservation.reservation_id);
