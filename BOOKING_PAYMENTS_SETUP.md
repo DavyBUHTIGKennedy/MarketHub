@@ -8,7 +8,7 @@ This stage adds the secure server-side foundation for a trader to accept an invi
 - One reservation per trader per market date, enforced by a database unique constraint.
 - Capacity allocation serialized by locking the market-date row in PostgreSQL. Two simultaneous requests cannot both take the final available pitch.
 - Capacity checks include active reservations and existing legacy booking records.
-- A 35-minute database hold; Stripe Checkout is configured to expire after 30 minutes.
+- A 36-minute database hold; Stripe Checkout is configured to expire after 31 minutes, leaving a safety margin before capacity is released.
 - A Stripe payment-attempt ledger and webhook event deduplication.
 - Booking confirmation only after a valid Stripe-signed `checkout.session.completed` webhook confirms the expected GBP amount.
 - Automatic refund attempt if Stripe reports a payment that cannot safely be matched to a live hold or has an unexpected amount/currency.
