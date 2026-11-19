@@ -110,22 +110,16 @@ Deno.serve(async (req) => {
         return json({ error: "Automatic refund needs retry: " + detail }, 500);
       }
       const { data: refundTx } = await db.from("market_payment_transactions")
-        .select("reservation_id").eq("stripe_checkout_session_id", sessionId).maybeSingle();
+        .select("reservation_id,hold_generation").eq("stripe_checkout_session_id", sessionId).maybeSingle();
       await db.from("market_payment_transactions").update({ status: "refunded", updated_at: new Date().toISOString() })
         .eq("stripe_checkout_session_id", sessionId);
       if (refundTx?.reservation_id) {
         const refundedAt = new Date().toISOString();
-        // Update only the hold associated with this Stripe session. A trader may
-        // already have started a replacement checkout after an older hold expired.
+        // Only release the exact hold generation associated with this Stripe
+        // attempt; a later retry for the same trader has a different generation.
         await db.from("market_reservations").update({ status: "refunded", updated_at: refundedAt })
           .eq("id", refundTx.reservation_id)
-          .eq("stripe_checkout_session_id", sessionId);
-        // If the webhook beat the checkout request's final session-link update,
-        // the SQL processor has already marked the current hold refund_required.
-        await db.from("market_reservations").update({ status: "refunded", updated_at: refundedAt })
-          .eq("id", refundTx.reservation_id)
-          .eq("status", "refund_required")
-          .is("stripe_checkout_session_id", null);
+          .eq("hold_generation", refundTx.hold_generation);
       }
     }
     return json({ received: true, result: processed?.result || "ignored" });
@@ -217,6 +211,7 @@ Deno.serve(async (req) => {
   const { error: saveError } = await db.from("market_payment_transactions").upsert({
     organization_id: reservation.organization_id,
     reservation_id: reservation.reservation_id,
+    hold_generation: reservation.hold_generation,
     stripe_checkout_session_id: stripeResult.id,
     checkout_url: stripeResult.url,
     amount_minor: amountMinor,
