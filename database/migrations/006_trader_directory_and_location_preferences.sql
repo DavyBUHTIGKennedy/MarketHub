@@ -157,7 +157,7 @@ using (
       select 1
       from public.market_traders t
       where t.id = trader_id
-        and t.organization_id = organization_id
+        and t.organization_id = market_trader_location_preferences.organization_id
         and t.auth_user_id = (select auth.uid())
     )
   )
