@@ -20,6 +20,30 @@ async function sha256(value: string) {
   return hex(new Uint8Array(digest));
 }
 
+function marketStartUtc(eventDate: string, openingTime: string, timeZone = "Europe/London") {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(eventDate);
+  const timeMatch = /^(\d{2}):(\d{2})(?::(\d{2}))?/.exec(openingTime);
+  if (!dateMatch || !timeMatch) throw new Error("The market date or opening time is invalid.");
+  const [, y, mo, d] = dateMatch;
+  const [, h, mi, sec = "0"] = timeMatch;
+  const targetLocalAsUtc = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(sec));
+  let guess = targetLocalAsUtc;
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  });
+  for (let i = 0; i < 4; i++) {
+    const parts = Object.fromEntries(formatter.formatToParts(new Date(guess))
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]));
+    const representedLocalAsUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+    const next = guess + (targetLocalAsUtc - representedLocalAsUtc);
+    if (next === guess) break;
+    guess = next;
+  }
+  return new Date(guess);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "POST required." }, 405);
@@ -109,8 +133,19 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (eventError) return json({ error: "Market date lookup failed: " + eventError.message }, 500);
   if (!event) return json({ error: "Market date not found for the supplied event ID." }, 404);
-  if (event.status !== "scheduled" || new Date(event.event_date + "T23:59:59Z").getTime() <= Date.now()) {
-    return json({ error: "Invitations can only be created for future scheduled market dates." }, 400);
+  if (event.status !== "scheduled" || !event.opening_time) {
+    return json({ error: "Invitations require a future scheduled market date with an opening time." }, 400);
+  }
+  let marketStart: Date;
+  try {
+    marketStart = marketStartUtc(event.event_date, String(event.opening_time));
+  } catch {
+    return json({ error: "The market opening date or time is invalid." }, 400);
+  }
+  const responseDeadline = new Date(marketStart.getTime() - 36 * 60 * 60 * 1000);
+  const expiresAt = responseDeadline.toISOString();
+  if (responseDeadline.getTime() <= Date.now()) {
+    return json({ error: "The invitation response deadline has passed (36 hours before market opening)." }, 400);
   }
 
   const { data: membership, error: memberError } = await adminDb
@@ -148,16 +183,12 @@ Deno.serve(async (req) => {
   );
   const candidates = roundTraders.filter((t: { id: string }) => {
     const old = existingByTrader.get(t.id) as { status: string; expires_at: string } | undefined;
-    const stillActive = old && ["pending", "viewed"].includes(old.status) && new Date(old.expires_at).getTime() > Date.now();
-    if (stillActive || old?.status === "accepted") return false;
+    const stillActiveWithSameDeadline = old
+      && ["pending", "viewed"].includes(old.status)
+      && old.expires_at === expiresAt;
+    if (stillActiveWithSameDeadline || old?.status === "accepted") return false;
     return true;
   });
-
-  // Expire invitations at the start of the market date (00:00 UTC).
-  // This is deliberately conservative: it always expires before the market opens,
-  // including when the market's local timezone observes daylight saving time.
-  const eventExpiry = new Date(event.event_date + "T00:00:00Z").getTime();
-  const expiresAt = new Date(Math.min(Date.now() + 7 * 86400000, eventExpiry)).toISOString();
   const issued: Array<{ name: string; email: string; url: string }> = [];
   for (const trader of candidates) {
     const tokenBytes = crypto.getRandomValues(new Uint8Array(32));
