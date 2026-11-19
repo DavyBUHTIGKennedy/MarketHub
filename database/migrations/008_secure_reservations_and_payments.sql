@@ -16,6 +16,7 @@ create table if not exists public.market_reservations (
   amount numeric(10,2) not null check (amount >= 0),
   currency char(3) not null default 'GBP' check (currency = 'GBP'),
   hold_expires_at timestamptz not null,
+  hold_generation uuid not null default gen_random_uuid(),
   stripe_checkout_session_id text unique,
   stripe_checkout_url text,
   stripe_payment_intent_id text unique,
@@ -36,6 +37,7 @@ create table if not exists public.market_payment_transactions (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
   reservation_id uuid not null references public.market_reservations(id) on delete restrict,
+  hold_generation uuid not null,
   stripe_checkout_session_id text not null unique,
   stripe_payment_intent_id text unique,
   checkout_url text not null,
@@ -249,6 +251,7 @@ begin
       'amount', existing_res.amount,
       'currency', existing_res.currency,
       'hold_expires_at', existing_res.hold_expires_at,
+      'hold_generation', existing_res.hold_generation,
       'checkout_session_id', existing_res.stripe_checkout_session_id,
       'checkout_url', existing_res.stripe_checkout_url,
       'reused', true
@@ -300,6 +303,7 @@ begin
         amount = inv.pitch_price,
         currency = 'GBP',
         hold_expires_at = hold_until,
+        hold_generation = gen_random_uuid(),
         stripe_checkout_session_id = null,
         stripe_checkout_url = null,
         stripe_payment_intent_id = null,
@@ -314,6 +318,7 @@ begin
     'amount', inv.pitch_price,
     'currency', 'GBP',
     'hold_expires_at', hold_until,
+    'hold_generation', (select hold_generation from public.market_reservations where id = reservation_id),
     'checkout_session_id', null,
     'checkout_url', null,
     'reused', false
@@ -376,9 +381,8 @@ begin
   end if;
 
   -- A trader may retry after an expired hold. Never let an old Checkout session
-  -- confirm the replacement hold. The 35-minute hold starts at
-  -- hold_expires_at minus 35 minutes.
-  stale_attempt := tx.created_at < (reservation.hold_expires_at - interval '35 minutes');
+  -- confirm or cancel the replacement hold.
+  stale_attempt := tx.hold_generation is distinct from reservation.hold_generation;
 
   select * into ev
   from public.market_events
