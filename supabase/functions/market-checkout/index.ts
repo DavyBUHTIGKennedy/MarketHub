@@ -177,7 +177,7 @@ Deno.serve(async (req) => {
     return json({ error: "The market pitch price is invalid." }, 500);
   }
 
-  const expiresAt = Math.floor(Date.now() / 1000) + 30 * 60;
+  const expiresAt = Math.floor(Date.now() / 1000) + 31 * 60;
   const successUrl = parsedBase.origin + parsedBase.pathname.replace(/\/?$/, "/")
     + "invite.html?token=" + encodeURIComponent(token) + "&payment=success&session_id={CHECKOUT_SESSION_ID}";
   const cancelUrl = parsedBase.origin + parsedBase.pathname.replace(/\/?$/, "/")
