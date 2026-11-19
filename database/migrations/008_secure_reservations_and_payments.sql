@@ -254,6 +254,11 @@ begin
   for update;
 
   if tx.id is null then
+    -- Stripe can deliver a webhook immediately after Checkout creation, before
+    -- the Edge Function has stored the session mapping. Do not consume the event;
+    -- Stripe's retry can then process it once the mapping exists.
+    delete from public.market_stripe_webhook_events
+    where stripe_event_id = p_stripe_event_id;
     return jsonb_build_object('result','unknown_session');
   end if;
 
