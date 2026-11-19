@@ -292,6 +292,13 @@ begin
           stripe_payment_intent_id = p_payment_intent_id,
           updated_at = now()
       where id = tx.id;
+      if not stale_attempt and reservation.status = 'held' then
+        update public.market_reservations
+        set status = 'refund_required',
+            stripe_payment_intent_id = p_payment_intent_id,
+            updated_at = now()
+        where id = reservation.id and status = 'held';
+      end if;
       return jsonb_build_object('result','refund_required','payment_intent_id',p_payment_intent_id);
     end if;
 
