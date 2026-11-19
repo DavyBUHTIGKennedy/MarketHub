@@ -1,2 +1,5 @@
 [functions.market-invitations]
 verify_jwt = false
+
+[functions.market-checkout]
+verify_jwt = false
