@@ -121,9 +121,11 @@ begin
     end if;
 
     if exists (
-      select 1 from public.market_reservations r
+      select 1
+      from public.market_reservations r
+      join public.market_traders t on t.id = r.trader_id
       where r.event_id = new.event_id
-        and r.trader_id = new.trader_id
+        and t.auth_user_id = new.trader_id
         and (r.status = 'confirmed' or (r.status = 'held' and r.hold_expires_at > now()))
     ) then
       raise exception 'This trader already has an invitation booking or active payment hold for this market date';
