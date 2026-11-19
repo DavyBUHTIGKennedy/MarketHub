@@ -107,7 +107,8 @@ Deno.serve(async (req) => {
     .select("id,organization_id,location_id,name,event_date,opening_time,pitch_price,status")
     .eq("id", eventId)
     .maybeSingle();
-  if (eventError || !event) return json({ error: "Market date not found." }, 404);
+  if (eventError) return json({ error: "Market date lookup failed: " + eventError.message }, 500);
+  if (!event) return json({ error: "Market date not found for the supplied event ID." }, 404);
   if (event.status !== "scheduled" || new Date(event.event_date + "T23:59:59Z").getTime() <= Date.now()) {
     return json({ error: "Invitations can only be created for future scheduled market dates." }, 400);
   }
