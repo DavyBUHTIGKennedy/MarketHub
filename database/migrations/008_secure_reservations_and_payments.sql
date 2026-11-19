@@ -243,8 +243,7 @@ begin
 
   if existing_res.id is not null
      and existing_res.status = 'held'
-     and existing_res.hold_expires_at > now()
-     and existing_res.stripe_checkout_url is not null then
+     and existing_res.hold_expires_at > now() then
     return jsonb_build_object(
       'reservation_id', existing_res.id,
       'organization_id', existing_res.organization_id,
