@@ -142,11 +142,14 @@ Deno.serve(async (req) => {
     : { data: [], error: null };
   if (traderError) return json({ error: "Could not load the trader directory." }, 500);
 
-  const candidates = (traders || []).filter((t: { id: string; is_priority: boolean }) => {
+  const roundTraders = (traders || []).filter((t: { is_priority: boolean }) =>
+    round === "priority" ? t.is_priority : !t.is_priority
+  );
+  const candidates = roundTraders.filter((t: { id: string }) => {
     const old = existingByTrader.get(t.id) as { status: string; expires_at: string } | undefined;
     const stillActive = old && ["pending", "viewed"].includes(old.status) && new Date(old.expires_at).getTime() > Date.now();
     if (stillActive || old?.status === "accepted") return false;
-    return round === "priority" ? t.is_priority : true;
+    return true;
   });
 
   const eventExpiry = new Date(event.event_date + "T23:59:59Z").getTime();
@@ -185,7 +188,7 @@ Deno.serve(async (req) => {
     location_name: location.name,
     round,
     created: issued.length,
-    skipped: (traders || []).length - candidates.length,
+    skipped: roundTraders.length - candidates.length,
     invitations: issued,
     message: issued.length
       ? "Invitation links created. They have not been emailed; copy and send each link to its named trader."
