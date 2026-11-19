@@ -64,6 +64,12 @@ Deno.serve(async (req) => {
 
     let event: Record<string, any>;
     try { event = JSON.parse(rawBody); } catch { return json({ error: "Invalid Stripe event body." }, 400); }
+    // This endpoint processes Checkout Session events only. A payment_intent
+    // event's object.id is not a Checkout Session ID and must not be mis-mapped.
+    const eventType = String(event?.type || "");
+    if (!eventType.startsWith("checkout.session.")) {
+      return json({ received: true, ignored: true });
+    }
     const session = event?.data?.object;
     const sessionId = typeof session?.id === "string" ? session.id : "";
     const paymentIntent = typeof session?.payment_intent === "string"
@@ -74,7 +80,7 @@ Deno.serve(async (req) => {
 
     const { data: processed, error } = await db.rpc("process_market_stripe_event", {
       p_stripe_event_id: String(event.id || ""),
-      p_event_type: String(event.type || ""),
+      p_event_type: eventType,
       p_checkout_session_id: sessionId,
       p_payment_intent_id: paymentIntent,
       p_amount_total: Number.isInteger(session.amount_total) ? session.amount_total : 0,
@@ -203,9 +209,10 @@ Deno.serve(async (req) => {
   const stripeResponse = await stripeRequest("checkout/sessions", stripeSecret, params, idempotencyKey);
   const stripeResult = await stripeResponse.json().catch(() => ({}));
   if (!stripeResponse.ok || !stripeResult.id || !stripeResult.url) {
-    await db.from("market_reservations").update({ status: "cancelled", updated_at: new Date().toISOString() })
-      .eq("id", reservation.reservation_id).eq("status", "held");
-    return json({ error: stripeResult?.error?.message || "Stripe could not start checkout." }, 502);
+    // The request may have reached Stripe even if the response was lost. Keep
+    // the capacity hold so a retry with the same idempotency key can recover
+    // the original Checkout Session safely.
+    return json({ error: stripeResult?.error?.message || "Stripe could not confirm checkout creation. Please retry shortly." }, 502);
   }
 
   const { error: saveError } = await db.from("market_payment_transactions").upsert({
@@ -219,11 +226,10 @@ Deno.serve(async (req) => {
     status: "checkout_open",
   }, { onConflict: "stripe_checkout_session_id", ignoreDuplicates: true });
   if (saveError) {
-    const expireParams = new URLSearchParams();
-    await stripeRequest("checkout/sessions/" + stripeResult.id + "/expire", stripeSecret, expireParams, "markethub-expire-" + stripeResult.id);
-    await db.from("market_reservations").update({ status: "cancelled", updated_at: new Date().toISOString() })
-      .eq("id", reservation.reservation_id).eq("status", "held");
-    return json({ error: "Checkout could not be safely recorded. No booking has been made; please try again." }, 500);
+    // Do not release capacity while a live Stripe Checkout Session may still
+    // accept payment. The same idempotency key can recover and record it on retry;
+    // otherwise Stripe expires it before the database hold naturally expires.
+    return json({ error: "Checkout was created but could not yet be recorded. Please retry shortly; your pitch remains temporarily held." }, 500);
   }
 
   const { error: attachError } = await db.from("market_reservations").update({
