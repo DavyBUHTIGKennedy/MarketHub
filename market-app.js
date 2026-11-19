@@ -30,7 +30,7 @@
     const loadData = async () => {
       message("Loading your market data…");
       const [l,p,e] = await Promise.all([
-        client.from("market_locations").select("id,name,address,active,default_pitch_capacity").eq("organization_id",orgId()).order("name"),
+        client.from("market_locations").select("id,name,address,active,default_pitch_capacity,default_pitch_price").eq("organization_id",orgId()).order("name"),
         client.from("pitches").select("id,location_id,pitch_code,description,weekly_price,active").eq("organization_id",orgId()).order("pitch_code"),
         client.from("market_events").select("id,location_id,name,event_date,opening_time,status,cancellation_message,pitch_capacity").eq("organization_id",orgId()).order("event_date")
       ]);
