@@ -76,10 +76,10 @@ Deno.serve(async (req) => {
       .eq("token_hash", tokenHash)
       .maybeSingle();
     if (error) return json({ error: "Could not check this invitation." }, 500);
-    if (!invite || !["pending", "viewed"].includes(invite.status)) {
+    if (!invite || !["pending", "viewed", "accepted"].includes(invite.status)) {
       return json({ error: "This invitation is no longer available. Please contact the market organiser." }, 404);
     }
-    if (new Date(invite.expires_at).getTime() <= Date.now()) {
+    if (invite.status !== "accepted" && new Date(invite.expires_at).getTime() <= Date.now()) {
       await adminDb.from("market_invitations").update({ status: "expired" }).eq("id", invite.id);
       return json({ error: "This invitation has expired. Please contact the market organiser." }, 410);
     }
@@ -91,6 +91,7 @@ Deno.serve(async (req) => {
     return json({
       invitation: {
         trader_name: invite.trader_name,
+        invitation_status: invite.status,
         event_name: invite.event_name,
         event_date: invite.event_date,
         location_name: invite.location_name,
