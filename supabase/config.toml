@@ -1,0 +1,2 @@
+[functions.market-invitations]
+verify_jwt = false
