@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#123b35">
+<title>MarketHub · Market invitation</title>
+<style>
+*{box-sizing:border-box}body{margin:0;padding:24px;background:#f5f7f4;color:#18332e;font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}.card{max-width:620px;margin:7vh auto;background:#fff;border:1px solid #dce5df;border-radius:18px;padding:26px;box-shadow:0 4px 18px #163c3010}.brand{font-size:22px;font-weight:800;color:#155b4d}h1{font-size:25px;margin:18px 0 6px}.muted{color:#687b75}.details{margin:22px 0;border-top:1px solid #dce5df}.line{display:flex;justify-content:space-between;gap:18px;padding:12px 0;border-bottom:1px solid #dce5df}.line span:first-child{color:#687b75}.price{font-size:23px;font-weight:800}.notice{background:#e7f2ed;border-radius:12px;padding:14px;margin-top:20px}.error{background:#fbe9e7;color:#8b302b;border-radius:10px;padding:13px}.small{font-size:13px}@media(max-width:500px){body{padding:12px}.card{margin:3vh auto;padding:19px}.line{align-items:flex-start}}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="brand">MarketHub</div>
+  <div id="status" class="muted" style="margin-top:18px">Checking your invitation…</div>
+  <section id="details" hidden>
+    <h1>Market invitation</h1>
+    <p class="muted" id="greeting"></p>
+    <div class="details">
+      <div class="line"><span>Market</span><strong id="event"></strong></div>
+      <div class="line"><span>Location</span><strong id="location"></strong></div>
+      <div class="line"><span>Date</span><strong id="date"></strong></div>
+      <div class="line"><span>Opening time</span><strong id="time"></strong></div>
+      <div class="line"><span>Pitch price</span><strong class="price" id="price"></strong></div>
+    </div>
+    <div class="notice">
+      <strong>What happens next?</strong>
+      <p style="margin:6px 0 0">This page is for reviewing your invitation only. Nothing has been booked and no payment has been taken. MarketHub will show a separate, clearly labelled acceptance and payment step when booking opens.</p>
+    </div>
+    <p class="muted small" id="expiry"></p>
+    <p class="muted small">Questions? Please contact the market organiser.</p>
+  </section>
+</main>
+<script>
+(() => {
+  const PROJECT_URL = "https://vjmiuscmsittmexrmuve.supabase.co";
+  const PUBLISHABLE_KEY = "sb_publishable_YVXaxjeHPYBAu93Iltztug_ZxC_MA1V";
+  const status = document.getElementById("status");
+  const token = new URLSearchParams(location.search).get("token") || "";
+  const sayError = message => { status.className = "error"; status.textContent = message; };
+  if (!/^[0-9a-f]{64}$/.test(token)) { sayError("This invitation link is incomplete or invalid. Please contact the market organiser."); return; }
+  fetch(PROJECT_URL + "/functions/v1/market-invitations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "apikey": PUBLISHABLE_KEY },
+    body: JSON.stringify({ action: "view", token })
+  }).then(async response => {
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.invitation) throw new Error(result.error || "This invitation could not be checked.");
+    return result.invitation;
+  }).then(invite => {
+    document.getElementById("greeting").textContent = invite.trader_name ? "Hello " + invite.trader_name + ", you have been invited to this market." : "You have been invited to this market.";
+    document.getElementById("event").textContent = invite.event_name;
+    document.getElementById("location").textContent = invite.location_name;
+    document.getElementById("date").textContent = new Date(invite.event_date + "T12:00:00").toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+    document.getElementById("time").textContent = invite.opening_time ? String(invite.opening_time).slice(0,5) : "To be confirmed";
+    document.getElementById("price").textContent = new Intl.NumberFormat("en-GB",{style:"currency",currency:"GBP"}).format(Number(invite.pitch_price));
+    document.getElementById("expiry").textContent = "Please respond before " + new Date(invite.expires_at).toLocaleString("en-GB") + ".";
+    status.remove();
+    document.getElementById("details").hidden = false;
+  }).catch(error => sayError(error.message));
+})();
+</script>
+</body>
+</html>
