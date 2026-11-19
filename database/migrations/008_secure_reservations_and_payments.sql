@@ -152,7 +152,7 @@ begin
 
   return new;
 end;
-$;
+$$;
 
 revoke all on function public.validate_market_booking() from public, anon, authenticated;
 
