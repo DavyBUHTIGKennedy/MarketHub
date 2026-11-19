@@ -77,11 +77,16 @@
     const formattedPrice = new Intl.NumberFormat("en-GB",{style:"currency",currency:"GBP"}).format(Number(invite.pitch_price));
     document.getElementById("price").textContent = formattedPrice;
     payButton.textContent = "Accept and pay " + formattedPrice;
-    document.getElementById("expiry").textContent = "Please respond before " + new Date(invite.expires_at).toLocaleString("en-GB") + ".";
+    document.getElementById("expiry").textContent = invite.invitation_status === "accepted"
+      ? "This invitation has been accepted."
+      : "Please respond before " + new Date(invite.expires_at).toLocaleString("en-GB") + ".";
     status.remove();
     document.getElementById("details").hidden = false;
 
-    if (params.get("payment") === "success") {
+    if (invite.invitation_status === "accepted") {
+      payButton.hidden = true;
+      showPaymentMessage("Booking confirmed. Your payment has been received.");
+    } else if (params.get("payment") === "success") {
       payButton.hidden = true;
       showPaymentMessage("Payment submitted. MarketHub is checking Stripe's confirmation. Please do not try to pay again.");
       try {
