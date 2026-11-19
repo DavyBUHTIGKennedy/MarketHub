@@ -381,6 +381,10 @@ begin
 
   -- A trader may retry after an expired hold. Never let an old Checkout session
   -- confirm or cancel the replacement hold.
+  if tx.status = 'paid' and reservation.status = 'confirmed' then
+    return jsonb_build_object('result','already_paid');
+  end if;
+
   stale_attempt := tx.hold_generation is distinct from reservation.hold_generation;
 
   select * into ev
