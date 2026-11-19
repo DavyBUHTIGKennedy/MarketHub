@@ -135,8 +135,8 @@ begin
   where event_id = inv.event_id and trader_id = inv.trader_id
   for update;
 
-  if existing_res.id is not null and existing_res.status = 'confirmed' then
-    raise exception 'This trader already has a confirmed booking for this market date.';
+  if existing_res.id is not null and existing_res.status in ('confirmed','refund_required') then
+    raise exception 'This trader already has a confirmed booking or a payment requiring organiser review.';
   end if;
 
   if existing_res.id is not null
@@ -145,6 +145,7 @@ begin
      and existing_res.stripe_checkout_url is not null then
     return jsonb_build_object(
       'reservation_id', existing_res.id,
+      'organization_id', existing_res.organization_id,
       'amount', existing_res.amount,
       'currency', existing_res.currency,
       'hold_expires_at', existing_res.hold_expires_at,
@@ -209,6 +210,7 @@ begin
 
   return jsonb_build_object(
     'reservation_id', reservation_id,
+    'organization_id', inv.organization_id,
     'amount', inv.pitch_price,
     'currency', 'GBP',
     'hold_expires_at', hold_until,
