@@ -240,6 +240,7 @@ declare
   reservation public.market_reservations%rowtype;
   expected_minor bigint;
   inserted_rows integer;
+  stale_attempt boolean;
 begin
   insert into public.market_stripe_webhook_events(stripe_event_id,event_type)
   values (p_stripe_event_id,p_event_type)
@@ -273,7 +274,21 @@ begin
     return jsonb_build_object('result','unknown_reservation');
   end if;
 
+  -- A trader may retry after an expired hold. Never let an old Checkout session
+  -- confirm the replacement hold. The 35-minute hold starts at
+  -- hold_expires_at minus 35 minutes.
+  stale_attempt := tx.created_at < (reservation.hold_expires_at - interval '35 minutes');
+
   if p_event_type = 'checkout.session.completed' and p_payment_status = 'paid' then
+    if stale_attempt or tx.status <> 'checkout_open' then
+      update public.market_payment_transactions
+      set status = 'refund_required',
+          stripe_payment_intent_id = p_payment_intent_id,
+          updated_at = now()
+      where id = tx.id;
+      return jsonb_build_object('result','refund_required','payment_intent_id',p_payment_intent_id);
+    end if;
+
     expected_minor := round(reservation.amount * 100)::bigint;
     if p_amount_total <> expected_minor or lower(p_currency) <> 'gbp' then
       update public.market_payment_transactions
@@ -281,11 +296,13 @@ begin
           stripe_payment_intent_id = p_payment_intent_id,
           updated_at = now()
       where id = tx.id;
-      update public.market_reservations
-      set status = 'refund_required',
-          stripe_payment_intent_id = p_payment_intent_id,
-          updated_at = now()
-      where id = reservation.id;
+      if not stale_attempt then
+        update public.market_reservations
+        set status = 'refund_required',
+            stripe_payment_intent_id = p_payment_intent_id,
+            updated_at = now()
+        where id = reservation.id and status = 'held';
+      end if;
       return jsonb_build_object('result','refund_required','payment_intent_id',p_payment_intent_id);
     end if;
 
@@ -323,17 +340,21 @@ begin
     where id = tx.id;
     return jsonb_build_object('result','refund_required','payment_intent_id',p_payment_intent_id);
   elsif p_event_type = 'checkout.session.expired' then
-    update public.market_reservations
-    set status = 'expired', updated_at = now()
-    where id = reservation.id and status = 'held';
+    if not stale_attempt then
+      update public.market_reservations
+      set status = 'expired', updated_at = now()
+      where id = reservation.id and status = 'held';
+    end if;
     update public.market_payment_transactions
     set status = 'expired', updated_at = now()
     where id = tx.id and status = 'checkout_open';
     return jsonb_build_object('result','expired');
   elsif p_event_type in ('checkout.session.async_payment_failed','payment_intent.payment_failed') then
-    update public.market_reservations
-    set status = 'cancelled', updated_at = now()
-    where id = reservation.id and status = 'held';
+    if not stale_attempt then
+      update public.market_reservations
+      set status = 'cancelled', updated_at = now()
+      where id = reservation.id and status = 'held';
+    end if;
     update public.market_payment_transactions
     set status = 'failed', updated_at = now()
     where id = tx.id and status = 'checkout_open';
