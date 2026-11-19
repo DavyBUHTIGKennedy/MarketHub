@@ -51,6 +51,104 @@ create table if not exists public.market_payment_transactions (
 create index if not exists market_payment_transactions_reservation
   on public.market_payment_transactions(reservation_id, created_at desc);
 
+-- Serialize legacy booking writes against invitation reservations too. This keeps
+-- both paths under the same market-event row lock and enforces the event capacity.
+create or replace function public.validate_market_booking()
+returns trigger
+language plpgsql
+set search_path = public
+as $
+declare
+  ev public.market_events%rowtype;
+  requested_pitch public.pitches%rowtype;
+  allocated_pitch public.pitches%rowtype;
+  active_bookings integer;
+  active_reservations integer;
+begin
+  select * into ev
+  from public.market_events
+  where id = new.event_id
+  for update;
+
+  select * into requested_pitch
+  from public.pitches
+  where id = new.preferred_pitch_id;
+
+  if ev.id is null or requested_pitch.id is null then
+    raise exception 'Market date or pitch does not exist';
+  end if;
+  if new.organization_id is distinct from ev.organization_id
+     or new.organization_id is distinct from requested_pitch.organization_id then
+    raise exception 'Market, pitch and booking must belong to the same organisation';
+  end if;
+  if ev.status <> 'scheduled' or not requested_pitch.active then
+    raise exception 'This market or pitch is not available';
+  end if;
+  if ev.location_id is distinct from requested_pitch.location_id then
+    raise exception 'The selected pitch does not belong to this market location';
+  end if;
+  if not exists (
+    select 1 from public.organization_memberships m
+    where m.organization_id = new.organization_id and m.user_id = new.trader_id
+  ) then
+    raise exception 'Trader must be a member of this market organisation';
+  end if;
+  if new.status = 'pending' and new.allocated_pitch_id is not null then
+    raise exception 'Pending applications cannot allocate a pitch';
+  end if;
+  if new.status in ('approved','reallocated') and new.allocated_pitch_id is null then
+    new.allocated_pitch_id := new.preferred_pitch_id;
+  end if;
+  if new.allocated_pitch_id is not null then
+    select * into allocated_pitch from public.pitches where id = new.allocated_pitch_id;
+    if allocated_pitch.id is null
+       or allocated_pitch.organization_id is distinct from new.organization_id
+       or allocated_pitch.location_id is distinct from ev.location_id
+       or not allocated_pitch.active then
+      raise exception 'Allocated pitch does not belong to this market location and organisation';
+    end if;
+  end if;
+
+  if new.status in ('pending','approved','reallocated') then
+    if exists (
+      select 1 from public.bookings b
+      where b.event_id = new.event_id
+        and b.trader_id = new.trader_id
+        and b.id is distinct from new.id
+        and b.status in ('pending','approved','reallocated')
+    ) then
+      raise exception 'This trader already has a booking or application for this market date';
+    end if;
+
+    if exists (
+      select 1 from public.market_reservations r
+      where r.event_id = new.event_id
+        and r.trader_id = new.trader_id
+        and (r.status = 'confirmed' or (r.status = 'held' and r.hold_expires_at > now()))
+    ) then
+      raise exception 'This trader already has an invitation booking or active payment hold for this market date';
+    end if;
+
+    select count(*)::integer into active_bookings
+    from public.bookings b
+    where b.event_id = new.event_id
+      and b.id is distinct from new.id
+      and b.status in ('pending','approved','reallocated');
+
+    select count(*)::integer into active_reservations
+    from public.market_reservations r
+    where r.event_id = new.event_id
+      and (r.status = 'confirmed' or (r.status = 'held' and r.hold_expires_at > now()));
+
+    if active_bookings + active_reservations >= ev.pitch_capacity then
+      raise exception 'All pitches for this market date have been taken';
+    end if;
+  end if;
+
+  return new;
+end;
+$;
+
 create table if not exists public.market_stripe_webhook_events (
   stripe_event_id text primary key,
   event_type text not null,
@@ -303,7 +401,7 @@ begin
     end if;
 
     expected_minor := round(reservation.amount * 100)::bigint;
-    if p_amount_total <> expected_minor or lower(p_currency) <> 'gbp' then
+    if p_amount_total <> expected_minor or coalesce(lower(p_currency),'') <> 'gbp' then
       update public.market_payment_transactions
       set status = 'refund_required',
           stripe_payment_intent_id = p_payment_intent_id,
