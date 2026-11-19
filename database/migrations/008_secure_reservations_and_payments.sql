@@ -238,6 +238,7 @@ as $$
 declare
   tx public.market_payment_transactions%rowtype;
   reservation public.market_reservations%rowtype;
+  ev public.market_events%rowtype;
   expected_minor bigint;
   inserted_rows integer;
   stale_attempt boolean;
@@ -279,8 +280,13 @@ begin
   -- hold_expires_at minus 35 minutes.
   stale_attempt := tx.created_at < (reservation.hold_expires_at - interval '35 minutes');
 
+  select * into ev
+  from public.market_events
+  where id = reservation.event_id and organization_id = reservation.organization_id
+  for update;
+
   if p_event_type = 'checkout.session.completed' and p_payment_status = 'paid' then
-    if stale_attempt or tx.status <> 'checkout_open' then
+    if stale_attempt or tx.status <> 'checkout_open' or ev.id is null or ev.status <> 'scheduled' then
       update public.market_payment_transactions
       set status = 'refund_required',
           stripe_payment_intent_id = p_payment_intent_id,
