@@ -8,7 +8,7 @@
   };
   window.startMarketHubApp = (client, session, memberships) => {
     let membership = memberships[0];
-    let locations = [], pitches = [], events = [], tab = "overview";
+    let locations = [], pitches = [], events = [], traders = [], traderPreferences = [], tab = "overview";
     let month = new Date(); month.setDate(1);
     let selectedDate = "";
     const isAdmin = () => ["owner","admin"].includes(membership.role);
@@ -21,7 +21,7 @@
       const orgOptions = memberships.length > 1
         ? '<label class="mh-muted" for="mhOrg">Organisation</label><select id="mhOrg">'+memberships.map((m,i)=>'<option value="'+i+'" '+(m===membership?'selected':'')+'>'+esc(m.organizations?.name||"Market organisation")+' — '+esc(m.role)+'</option>').join("")+'</select>'
         : '<small>'+esc(membership.organizations?.name||"Market organisation")+' · '+esc(membership.role)+'</small>';
-      root.innerHTML = '<div class="mh-top"><div><div style="font-size:21px;font-weight:800">MarketHub</div><small>'+esc(session.user.email)+' · '+esc(membership.role)+'</small></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+orgOptions+'<button class="mh-button secondary" id="mhSignOut">Sign out</button></div></div><nav class="mh-nav"><button data-tab="overview">Overview</button><button data-tab="calendar">Market calendar</button><button data-tab="pitches">Locations & pitches</button></nav><div id="mhMessage" class="mh-muted" role="status"></div><div id="mhContent"></div>';
+      root.innerHTML = '<div class="mh-top"><div><div style="font-size:21px;font-weight:800">MarketHub</div><small>'+esc(session.user.email)+' · '+esc(membership.role)+'</small></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+orgOptions+'<button class="mh-button secondary" id="mhSignOut">Sign out</button></div></div><nav class="mh-nav"><button data-tab="overview">Overview</button><button data-tab="calendar">Market calendar</button><button data-tab="pitches">Locations & pitches</button>'+(isAdmin()?'<button data-tab="traders">Traders</button>':'')+'</nav><div id="mhMessage" class="mh-muted" role="status"></div><div id="mhContent"></div>';
       root.querySelector("#mhSignOut").onclick=async()=>{const {error}=await client.auth.signOut();if(error)message("Sign out failed: "+error.message,true);};
       root.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render();});
       const orgSelect=root.querySelector("#mhOrg");
@@ -29,14 +29,16 @@
     };
     const loadData = async () => {
       message("Loading your market data…");
-      const [l,p,e] = await Promise.all([
+      const [l,p,e,t,tp] = await Promise.all([
         client.from("market_locations").select("id,name,address,active,default_pitch_capacity,default_pitch_price").eq("organization_id",orgId()).order("name"),
         client.from("pitches").select("id,location_id,pitch_code,description,weekly_price,active").eq("organization_id",orgId()).order("pitch_code"),
-        client.from("market_events").select("id,location_id,name,event_date,opening_time,status,cancellation_message,pitch_capacity").eq("organization_id",orgId()).order("event_date")
+        client.from("market_events").select("id,location_id,name,event_date,opening_time,status,cancellation_message,pitch_capacity,pitch_price").eq("organization_id",orgId()).order("event_date"),
+        client.from("market_traders").select("id,email,full_name,business_name,phone,active,auth_user_id").eq("organization_id",orgId()).order("email"),
+        client.from("market_trader_location_preferences").select("trader_id,location_id,is_eligible").eq("organization_id",orgId())
       ]);
-      const errors=[l.error,p.error,e.error].filter(Boolean);
+      const errors=[l.error,p.error,e.error,t.error,tp.error].filter(Boolean);
       if(errors.length){message("Could not load market data: "+errors.map(x=>x.message).join(" · "),true);return;}
-      locations=l.data||[];pitches=p.data||[];events=e.data||[];
+      locations=l.data||[];pitches=p.data||[];events=e.data||[];traders=t.data||[];traderPreferences=tp.data||[];
       message("Live data loaded from Supabase. Changes are saved to the organisation database.");
       render();
     };
@@ -69,10 +71,22 @@
       }
       out+='</div>';return out;
     };
+    const traderPage = () => {
+      let out='<div class="mh-card"><h2>Traders</h2><p class="mh-muted">Manage trader contact details and the locations they can be invited to. New traders start eligible at every location. Invitation emails are not connected yet.</p>';
+      out+='<form id="mhTraderForm" class="mh-grid"><div class="mh-field"><label>Trader name</label><input name="full_name" required placeholder="Full name"></div><div class="mh-field"><label>Email address</label><input name="email" type="email" required placeholder="trader@example.com"></div><div class="mh-field"><label>Business name (optional)</label><input name="business_name"></div><div class="mh-field"><label>Phone (optional)</label><input name="phone" type="tel"></div><div><button class="mh-button">Add trader</button></div></form><hr style="border:0;border-top:1px solid #dce5df;margin:20px 0">';
+      out+=traders.length?traders.map(t=>{
+        const prefs=locations.map(loc=>{
+          const pref=traderPreferences.find(p=>p.trader_id===t.id&&p.location_id===loc.id);
+          return '<label style="display:inline-flex;gap:7px;align-items:center;margin:6px 16px 6px 0"><input type="checkbox" data-trader-eligibility="'+t.id+'" data-location-id="'+loc.id+'" '+(pref?.is_eligible!==false?'checked':'')+' '+(!t.active?'disabled':'')+'> '+esc(loc.name)+'</label>';
+        }).join("");
+        return '<section style="margin:14px 0;padding:14px;border:1px solid #dce5df;border-radius:12px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div><h3 style="margin:0">'+esc(t.full_name||t.email)+'</h3><div class="mh-muted">'+esc(t.email)+'</div>'+(t.business_name?'<div class="mh-muted">'+esc(t.business_name)+'</div>':'')+(t.phone?'<div class="mh-muted">'+esc(t.phone)+'</div>':'')+'</div><div class="mh-muted">'+(t.auth_user_id?'Account linked':'No website login linked')+'</div></div><div style="margin-top:12px"><b>Eligible locations</b><div>'+prefs+'</div></div></section>';
+      }).join(""):'<p class="mh-muted">No traders have been added yet.</p>';
+      out+='</div>';return out;
+    };
     const render = () => {
       root.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===tab));
       const content=root.querySelector("#mhContent");
-      content.innerHTML=tab==="calendar"?calendar():tab==="pitches"?pitchPage():overview();
+      content.innerHTML=tab==="calendar"?calendar():tab==="pitches"?pitchPage():tab==="traders"&&isAdmin()?traderPage():overview();
       root.querySelector("#mhPrev")?.addEventListener("click",()=>{month.setMonth(month.getMonth()-1);render();});
       root.querySelector("#mhNext")?.addEventListener("click",()=>{month.setMonth(month.getMonth()+1);render();});
       content.querySelectorAll("[data-date]").forEach(b=>b.onclick=()=>{selectedDate=b.dataset.date;render();});
@@ -103,6 +117,21 @@
         if(error){message("Could not add location: "+error.message,true);return;}
         await loadData();tab="pitches";render();
       });
+      content.querySelector("#mhTraderForm")?.addEventListener("submit",async ev=>{
+        ev.preventDefault();const fd=new FormData(ev.target);
+        const email=String(fd.get("email")||"").trim().toLowerCase();
+        const {error}=await client.from("market_traders").insert({organization_id:orgId(),email,full_name:String(fd.get("full_name")||"").trim(),business_name:String(fd.get("business_name")||"").trim()||null,phone:String(fd.get("phone")||"").trim()||null,active:true});
+        if(error){message(error.code==="23505"?"That email address is already in this organisation.":"Could not add trader: "+error.message,true);return;}
+        await loadData();tab="traders";render();
+      });
+      content.querySelectorAll("[data-trader-eligibility]").forEach(box=>box.addEventListener("change",async()=>{
+        const traderId=box.dataset.traderEligibility,locationId=box.dataset.locationId;
+        const {error}=await client.from("market_trader_location_preferences").update({is_eligible:box.checked}).eq("trader_id",traderId).eq("location_id",locationId).eq("organization_id",orgId());
+        if(error){message("Could not update location eligibility: "+error.message,true);box.checked=!box.checked;return;}
+        message("Location eligibility saved.");
+        const pref=traderPreferences.find(p=>p.trader_id===traderId&&p.location_id===locationId);
+        if(pref)pref.is_eligible=box.checked;
+      }));
       content.querySelector("#mhEventForm")?.addEventListener("submit",async ev=>{
         ev.preventDefault();const fd=new FormData(ev.target);
         const {error}=await client.from("market_events").insert({organization_id:orgId(),location_id:fd.get("location_id"),name:String(fd.get("name")).trim(),event_date:fd.get("event_date"),opening_time:fd.get("opening_time")||null,pitch_capacity:Number(fd.get("pitch_capacity")),pitch_price:Number(fd.get("pitch_price")),status:"scheduled"});
