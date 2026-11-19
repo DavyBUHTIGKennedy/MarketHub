@@ -33,7 +33,7 @@
         client.from("market_locations").select("id,name,address,active,default_pitch_capacity,default_pitch_price").eq("organization_id",orgId()).order("name"),
         client.from("pitches").select("id,location_id,pitch_code,description,weekly_price,active").eq("organization_id",orgId()).order("pitch_code"),
         client.from("market_events").select("id,location_id,name,event_date,opening_time,status,cancellation_message,pitch_capacity,pitch_price").eq("organization_id",orgId()).order("event_date"),
-        client.from("market_traders").select("id,email,full_name,business_name,phone,active,auth_user_id").eq("organization_id",orgId()).order("email"),
+        client.from("market_traders").select("id,email,full_name,business_name,phone,active,auth_user_id,is_priority").eq("organization_id",orgId()).order("email"),
         client.from("market_trader_location_preferences").select("trader_id,location_id,is_eligible").eq("organization_id",orgId())
       ]);
       const errors=[l.error,p.error,e.error,t.error,tp.error].filter(Boolean);
