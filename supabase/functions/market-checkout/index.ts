@@ -82,6 +82,11 @@ Deno.serve(async (req) => {
       p_payment_status: String(session.payment_status || ""),
     });
     if (error) return json({ error: "Could not process payment event: " + error.message }, 500);
+    if (processed?.result === "unknown_session") {
+      // Ask Stripe to retry: its event may have arrived before the session mapping
+      // was committed by the checkout request.
+      return json({ error: "Checkout session is not recorded yet; retry webhook delivery." }, 500);
+    }
 
     // If payment arrived after the hold expired or failed validation, automatically
     // refund it. The refund is idempotent; duplicate webhook deliveries retry a
@@ -140,7 +145,7 @@ Deno.serve(async (req) => {
   }
 
   const amountMinor = Math.round(Number(reservation.amount) * 100);
-  if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) {
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
     await db.from("market_reservations").update({ status: "cancelled", updated_at: new Date().toISOString() })
       .eq("id", reservation.reservation_id).eq("status", "held");
     return json({ error: "The market pitch price is invalid." }, 500);
