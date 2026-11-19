@@ -153,7 +153,10 @@ Deno.serve(async (req) => {
     return true;
   });
 
-  const eventExpiry = new Date(event.event_date + "T23:59:59Z").getTime();
+  // Expire invitations at the start of the market date (00:00 UTC).
+  // This is deliberately conservative: it always expires before the market opens,
+  // including when the market's local timezone observes daylight saving time.
+  const eventExpiry = new Date(event.event_date + "T00:00:00Z").getTime();
   const expiresAt = new Date(Math.min(Date.now() + 7 * 86400000, eventExpiry)).toISOString();
   const issued: Array<{ name: string; email: string; url: string }> = [];
   for (const trader of candidates) {
