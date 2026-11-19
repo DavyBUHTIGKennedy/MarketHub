@@ -60,7 +60,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 declare
   ev public.market_events%rowtype;
   requested_pitch public.pitches%rowtype;
