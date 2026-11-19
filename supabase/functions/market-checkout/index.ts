@@ -109,10 +109,14 @@ Deno.serve(async (req) => {
         const detail = await refundResponse.text();
         return json({ error: "Automatic refund needs retry: " + detail }, 500);
       }
+      const { data: refundTx } = await db.from("market_payment_transactions")
+        .select("reservation_id").eq("stripe_checkout_session_id", sessionId).maybeSingle();
       await db.from("market_payment_transactions").update({ status: "refunded", updated_at: new Date().toISOString() })
         .eq("stripe_checkout_session_id", sessionId);
-      await db.from("market_reservations").update({ status: "refunded", updated_at: new Date().toISOString() })
-        .eq("stripe_checkout_session_id", sessionId);
+      if (refundTx?.reservation_id) {
+        await db.from("market_reservations").update({ status: "refunded", updated_at: new Date().toISOString() })
+          .eq("id", refundTx.reservation_id);
+      }
     }
     return json({ received: true, result: processed?.result || "ignored" });
   }
@@ -199,7 +203,7 @@ Deno.serve(async (req) => {
     return json({ error: stripeResult?.error?.message || "Stripe could not start checkout." }, 502);
   }
 
-  const { error: saveError } = await db.from("market_payment_transactions").insert({
+  const { error: saveError } = await db.from("market_payment_transactions").upsert({
     organization_id: reservation.organization_id,
     reservation_id: reservation.reservation_id,
     stripe_checkout_session_id: stripeResult.id,
@@ -207,7 +211,7 @@ Deno.serve(async (req) => {
     amount_minor: amountMinor,
     currency: "GBP",
     status: "checkout_open",
-  });
+  }, { onConflict: "stripe_checkout_session_id", ignoreDuplicates: true });
   if (saveError) {
     const expireParams = new URLSearchParams();
     await stripeRequest("checkout/sessions/" + stripeResult.id + "/expire", stripeSecret, expireParams, "markethub-expire-" + stripeResult.id);
