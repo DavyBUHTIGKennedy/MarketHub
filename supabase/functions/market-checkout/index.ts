@@ -119,6 +119,24 @@ Deno.serve(async (req) => {
 
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ error: "Invalid request body." }, 400); }
+
+  if (body.action === "status") {
+    const token = String(body.token || "");
+    if (!/^[0-9a-f]{64}$/.test(token)) return json({ error: "This invitation link is invalid." }, 404);
+    const tokenHash = await sha256(token);
+    const { data: invite, error: inviteError } = await db.from("market_invitations")
+      .select("id,status,expires_at").eq("token_hash", tokenHash).maybeSingle();
+    if (inviteError || !invite) return json({ error: "Invitation not found." }, 404);
+    const { data: reservation, error: reservationError } = await db.from("market_reservations")
+      .select("status,hold_expires_at").eq("invitation_id", invite.id).maybeSingle();
+    if (reservationError) return json({ error: "Could not check booking status." }, 500);
+    return json({
+      invitation_status: invite.status,
+      reservation_status: reservation?.status || "not_started",
+      hold_expires_at: reservation?.hold_expires_at || null,
+    });
+  }
+
   if (body.action !== "checkout") return json({ error: "Unknown payment action." }, 400);
 
   const stripeSecret = Deno.env.get("STRIPE_SECRET_KEY");
