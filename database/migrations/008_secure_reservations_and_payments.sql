@@ -58,6 +58,7 @@ create index if not exists market_payment_transactions_reservation
 create or replace function public.validate_market_booking()
 returns trigger
 language plpgsql
+security definer
 set search_path = public
 as $
 declare
@@ -152,6 +153,8 @@ begin
   return new;
 end;
 $;
+
+revoke all on function public.validate_market_booking() from public, anon, authenticated;
 
 create table if not exists public.market_stripe_webhook_events (
   stripe_event_id text primary key,
