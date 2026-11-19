@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
       const { data: prior } = await db.from("market_payment_transactions")
         .select("status,stripe_payment_intent_id")
         .eq("stripe_checkout_session_id", sessionId).maybeSingle();
-      refundRequired = prior?.status === "refund_required";
+      refundRequired = prior?.status === "refund_required" || prior?.status === "refunded";
       if (refundRequired) paymentIntent && (processed.payment_intent_id = paymentIntent);
       if (refundRequired && prior?.stripe_payment_intent_id) processed.payment_intent_id = prior.stripe_payment_intent_id;
     }
